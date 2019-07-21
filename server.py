@@ -19,8 +19,6 @@ def get_size(obj, seen=None):
         obj_id = id(obj)
         if obj_id in seen:
             return 0
-        # Important mark as seen *before* entering recursion to gracefully handle
-        # self-referential objects
         seen.add(obj_id)
         if isinstance(obj, dict):
             size += sum([get_size(v, seen) for v in obj.values()])
@@ -81,10 +79,10 @@ class DataManager():
         self.df_train = df_train
         self.df_val = df_val
         self.problem_setup = problem_setup
-        self.model = RandomForestClassifier(n_estimators = 10, max_depth=12)
+        self.model = RandomForestClassifier(n_estimators = 10, max_depth=12, random_state = 1)
 
         # print('data manager start, data manager size: {0}, {1}'.format(get_size(self), time.time() - self.start_time))
-        self.outlier_model = IsolationForest()
+        self.outlier_model = IsolationForest(random_state = 1)
         self.fit_data_pipeline()
 
         del self.df_train
@@ -120,8 +118,8 @@ class DataManager():
         self.violation_desc_ohe = OHE(col_name = 'violation_desc')
         self.body_style_ohe = OHE(col_name = 'body_style')
 
-        self.numeric_cols = ['Fine amount', 'lat_long_outlier_score', 'plate_expiration_diff_ts', 'Issue time']
-        print('all OHE calculated, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
+        self.numeric_cols = ['Fine amount', 'lat_long_outlier_score', 'plate_expiration_diff_ts']
+        # print('all OHE calculated, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
 
         train_dfs = [self.rp_state_plate_ohe.fit_transform(self.df_train['RP State Plate']),
                     self.color_ohe.fit_transform(self.df_train['Color']),
@@ -136,15 +134,17 @@ class DataManager():
         train_data = pd.concat(train_dfs, axis = 1)
         train_labels = self.process_label(self.df_train)
 
-        print('labels and data made, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
+        print('labels and data created, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
 
         if self.debug_mode:
             train_data_copy = train_data.copy()
             train_data_copy['Make'] = self.df_train['Make']
             train_data_copy.to_csv('label_analysis.csv')
 
-        self.train_nan_fillers = train_data.median()
-        train_data = train_data.fillna(self.train_nan_fillers)#TODO: fix actual nan
+        self.train_nan_fill_choice = train_data.median()
+        self.train_nan_fill_choice['Issue time'] = train_data['Issue time'].mode()
+
+        train_data = train_data.fillna(self.train_nan_fill_choice)#TODO: fix actual nan
         train_data['target'] = train_labels
         train_data_positive = train_data[train_data['target'] == 1]
         train_data_negative = train_data[train_data['target'] == 0]
@@ -195,7 +195,7 @@ class DataManager():
         recall = tp/(tp + fn)
         f1_score = 2 * (precision*recall)/(precision + recall)
         print(tn, fp, fn, tp )
-        print('Positive metrics, precision: {precision}, recall: {recall}, f1_score: {f1_score}'.format(precision=precision, recall = recall, f1_score = f1_score))
+        print('Metrics, precision: {precision}, recall: {recall}, f1_score: {f1_score}'.format(precision=precision, recall = recall, f1_score = f1_score))
 
     def process_label(self, df):
         if self.problem_setup == 'full_group':
@@ -223,7 +223,7 @@ class DataManager():
         numeric_df = df[self.numeric_cols].reset_index(drop = True)
         dfs.append(numeric_df)
         data = pd.concat(dfs, axis = 1)
-        data = data.fillna(self.train_nan_fillers)
+        data = data.fillna(self.train_nan_fill_choice)
         return data
 
     def predict_record(self,lat = None,
@@ -308,4 +308,4 @@ if __name__ == '__main__':
 
     # print(df_labeled.shape, df_analysis.shape, df_holdout.shape)
     dm = DataManager(df_analysis, df_holdout)
-    app.run(host= '127.0.0.1', port = 9999, debug=False)
+    app.run(host= '127.0.0.1', port = 9998, debug=False)
