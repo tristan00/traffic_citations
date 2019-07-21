@@ -39,31 +39,31 @@ def pad_int(num, l = 4):
         return num_str
 
 
-class OHE():
-    def __init__(self, min_perc = .01, col_name = '', nan_treatment = 'mode'):
+class OHE(OneHotEncoder):
+    def __init__(self, n_values=None, categorical_features=None,
+                 categories=None, sparse=True, dtype=np.float64,
+                 handle_unknown='error', min_perc = .01, col_name = '', nan_treatment = 'mode'):
+        super().__init__(n_values=n_values, categorical_features=categorical_features,
+                 categories=categories, sparse=sparse, dtype=dtype,
+                 handle_unknown=handle_unknown)
         self.nan_treatment = nan_treatment
         self.min_perc = min_perc
         self.col_name = col_name
-        self.valid_values  =[]
+        self.valid_values = []
+        self.col_names = []
 
-    def fit_transform(self, s):
-        self.sk_ohe = OneHotEncoder(handle_unknown = 'ignore')
-        s_np = self.process(s)
-        output = self.sk_ohe.fit_transform(s_np)
-        output_dense = output.toarray()
-        self.col_names = ['{col_base_name}_{value_name}'.format(col_base_name=self.col_name, value_name = i) for i in self.sk_ohe.categories_[0]]
-        output_df = pd.DataFrame(data = output_dense,
-                                columns = self.col_names)
-        return output_df
+    def fit(self, X, y=None):
+        input_series = self.process_input(X)
+        super().fit( input_series)
+        self.col_names = ['{col_base_name}_{value_name}'.format(col_base_name=self.col_name, value_name = i) for i in self.categories_[0]]
 
-    def transform(self, s):
-        s_np = self.process(s)
-        output = self.sk_ohe.transform(s_np).toarray()
-        output_df = pd.DataFrame(data = output,
-                                columns = self.col_names)
-        return output_df
+    def transform(self, X):
+        input_series = self.process_input(X)
+        output = super().transform(input_series)
+        return self.process_output(output)
 
-    def process(self, s):
+    def process_input(self, s):
+        print('process_input', self.col_name, type(s))
         if self.nan_treatment == 'mode':
             s = s.fillna(s.mode())
         s = s.astype(str)
@@ -76,6 +76,12 @@ class OHE():
         replace_dict.update({i:i for i in self.valid_values})
         s = s.map(replace_dict.get)
         return s.values.reshape(-1, 1)
+
+    def process_output(self, output):
+        print('process_output', self.col_name, type(output))
+        output_df = pd.DataFrame(data = output.toarray(),
+                                columns = self.col_names)
+        return output_df
 
 
 class DataManager():
@@ -121,33 +127,44 @@ class DataManager():
         # self.df_train.loc[:, 'ticket_ts'] = self.df_train.loc[:,'ticket_dt'].values.astype(np.int64)
         # print('plate_expiration_diff calculated, data manager size: {0}'.format(get_size(self)))
 
-        self.rp_state_plate_ohe = OHE(col_name = 'rp_state_plate')
-        self.color_ohe = OHE(col_name = 'color')
-        self.agency_ohe = OHE(col_name = 'agency')
-        self.route_ohe = OHE(col_name = 'route')
-        self.violation_code_ohe = OHE(col_name = 'violation_code')
-        self.violation_desc_ohe = OHE(col_name = 'violation_desc')
-        self.body_style_ohe = OHE(col_name = 'body_style')
-        self.ticket_year_ohe = OHE(col_name = 'ticket_year')
-        self.ticket_month_ohe = OHE(col_name = 'ticket_month')
-        self.ticket_dow_ohe = OHE(col_name = 'ticket_dow')
-        self.ticket_hour_of_day_ohe = OHE(col_name = 'ticket_hour_of_day')
+        self.rp_state_plate_ohe = OHE2(col_name = 'rp_state_plate')
+        self.color_ohe = OHE2(col_name = 'color')
+        self.agency_ohe = OHE2(col_name = 'agency')
+        self.route_ohe = OHE2(col_name = 'route')
+        self.violation_code_ohe = OHE2(col_name = 'violation_code')
+        self.violation_desc_ohe = OHE2(col_name = 'violation_desc')
+        self.body_style_ohe = OHE2(col_name = 'body_style')
+        self.ticket_year_ohe = OHE2(col_name = 'ticket_year')
+        self.ticket_month_ohe = OHE2(col_name = 'ticket_month')
+        self.ticket_dow_ohe = OHE2(col_name = 'ticket_dow')
+        self.ticket_hour_of_day_ohe = OHE2(col_name = 'ticket_hour_of_day')
 
         # self.numeric_cols = ['Fine amount', 'lat_long_outlier_score', 'plate_expiration_diff_ts']
         self.numeric_cols = ['Fine amount', 'plate_expiration_diff_ts']
         # print('all OHE calculated, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
+        self.rp_state_plate_ohe.fit(self.df_train['RP State Plate']),
+        self.color_ohe.fit(self.df_train['Color']),
+        self.agency_ohe.fit(self.df_train['Agency']),
+        self.route_ohe.fit(self.df_train['Route']),
+        self.violation_code_ohe.fit(self.df_train['Violation code']),
+        self.violation_desc_ohe.fit(self.df_train['Violation Description']),
+        self.body_style_ohe.fit(self.df_train['Body Style']),
+        self.ticket_year_ohe.fit(self.df_train['ticket_year']),
+        self.ticket_month_ohe.fit(self.df_train['ticket_month']),
+        self.ticket_dow_ohe.fit(self.df_train['ticket_dow']),
+        self.ticket_hour_of_day_ohe.fit(self.df_train['ticket_hour_of_day'])
 
-        train_dfs = [self.rp_state_plate_ohe.fit_transform(self.df_train['RP State Plate']),
-                    self.color_ohe.fit_transform(self.df_train['Color']),
-                    self.agency_ohe.fit_transform(self.df_train['Agency']),
-                    self.route_ohe.fit_transform(self.df_train['Route']),
-                    self.violation_code_ohe.fit_transform(self.df_train['Violation code']),
-                    self.violation_desc_ohe.fit_transform(self.df_train['Violation Description']),
-                    self.body_style_ohe.fit_transform(self.df_train['Body Style']),
-                    self.ticket_year_ohe.fit_transform(self.df_train['ticket_year']),
-                    self.ticket_month_ohe.fit_transform(self.df_train['ticket_month']),
-                    self.ticket_dow_ohe.fit_transform(self.df_train['ticket_dow']),
-                    self.ticket_hour_of_day_ohe.fit_transform(self.df_train['ticket_hour_of_day'])]
+        train_dfs = [self.rp_state_plate_ohe.transform(self.df_train['RP State Plate']),
+                    self.color_ohe.transform(self.df_train['Color']),
+                    self.agency_ohe.transform(self.df_train['Agency']),
+                    self.route_ohe.transform(self.df_train['Route']),
+                    self.violation_code_ohe.transform(self.df_train['Violation code']),
+                    self.violation_desc_ohe.transform(self.df_train['Violation Description']),
+                    self.body_style_ohe.transform(self.df_train['Body Style']),
+                    self.ticket_year_ohe.transform(self.df_train['ticket_year']),
+                    self.ticket_month_ohe.transform(self.df_train['ticket_month']),
+                    self.ticket_dow_ohe.transform(self.df_train['ticket_dow']),
+                    self.ticket_hour_of_day_ohe.transform(self.df_train['ticket_hour_of_day'])]
 
         numeric_df = self.df_train[self.numeric_cols].reset_index(drop = True)
         train_dfs.append(numeric_df)
@@ -317,9 +334,9 @@ def query_model():
 if __name__ == '__main__':
     replacement_value = 'dummy_replacement_value'
     path = '/home/td/Documents'
-    url = 'https://s3-us-west-2.amazonaws.com/pcadsassessment/parking_citations.corrupted.csv'
-    # df = pd.read_csv('{path}/tickets.csv'.format(path=path), low_memory=False, nrows = 100000)
-    df = pd.read_csv(url, low_memory=False)
+    # url = 'https://s3-us-west-2.amazonaws.com/pcadsassessment/parking_citations.corrupted.csv'
+    df = pd.read_csv('{path}/tickets.csv'.format(path=path), low_memory=False, nrows = 100000)
+    # df = pd.read_csv(url, low_memory=False)
     df_unlabeled = df[df['Make'].isna()]
     df_unlabeled.to_csv('unlabeled_data.csv', index = False)
     df_labeled = df.dropna(subset = ['Make'])
