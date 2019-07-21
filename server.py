@@ -5,27 +5,67 @@ from sklearn.metrics import classification_report, confusion_matrix
 from scipy import stats
 import numpy as np
 from flask import Flask, request, jsonify
+import gc
+import sys
+import time
 
 app = Flask(__name__)
 
 
+def get_size(obj, seen=None):
+        size = sys.getsizeof(obj)
+        if seen is None:
+            seen = set()
+        obj_id = id(obj)
+        if obj_id in seen:
+            return 0
+        # Important mark as seen *before* entering recursion to gracefully handle
+        # self-referential objects
+        seen.add(obj_id)
+        if isinstance(obj, dict):
+            size += sum([get_size(v, seen) for v in obj.values()])
+            size += sum([get_size(k, seen) for k in obj.keys()])
+        elif hasattr(obj, '__dict__'):
+            size += get_size(obj.__dict__, seen)
+        elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
+            size += sum([get_size(i, seen) for i in obj])
+        return size
+
+
 class OHE():
-    def __init__(self, training_series, min_perc = .01, col_name = '', nan_treatment = 'mode'):
-        if nan_treatment == 'mode':
+    def __init__(self, min_perc = .01, col_name = '', nan_treatment = 'mode'):
+        self.nan_treatment = nan_treatment
+        self.min_perc = min_perc
+        self.col_name = col_name
+
+    def fit_transform(self, training_series):
+
+        start = time.time()
+
+        if self.nan_treatment == 'mode':
             training_series = training_series.fillna(training_series.mode())
         training_series = training_series.astype(str)
 
         self.sk_ohe = OneHotEncoder(handle_unknown = 'ignore')
-        self.valid_values = [i for  i, j in dict(training_series.value_counts(normalize = True)).items() if j >= min_perc]
+        self.valid_values = [i for  i, j in dict(training_series.value_counts(normalize = True)).items() if j >= self.min_perc]
         training_values_to_replace = [i for i in training_series.unique() if i not in self.valid_values]
-        training_series = training_series.replace(training_values_to_replace, [replacement_value for _ in training_values_to_replace])
+        replace_dict = {i: replacement_value for i in training_values_to_replace}
+        replace_dict.update({i:i for i in self.valid_values})
+        training_series = training_series.map(replace_dict.get)
+
         training_np = training_series.values.reshape(-1, 1)
-        self.sk_ohe.fit(training_np)
-        self.col_names = ['{col_base_name}_{value_name}'.format(col_base_name=col_name, value_name = i) for i in self.sk_ohe.categories_[0]]
+        output = self.sk_ohe.fit_transform(training_np)
+        output_dense = output.toarray()
+        self.col_names = ['{col_base_name}_{value_name}'.format(col_base_name=self.col_name, value_name = i) for i in self.sk_ohe.categories_[0]]
+        output_df = pd.DataFrame(data = output_dense,
+                                columns = self.col_names)
+        return output_df
 
     def transform(self, prediction_series):
         prediction_values_to_replace = [i for i in prediction_series.unique() if i not in self.valid_values]
-        prediction_series = prediction_series.replace(prediction_values_to_replace, [replacement_value for _ in prediction_values_to_replace])
+        replace_dict = {i: replacement_value for i in prediction_values_to_replace}
+        replace_dict.update({i:i for i in self.valid_values})
+        prediction_series = prediction_series.map(replace_dict.get)
         prediction_np = prediction_series.values.reshape(-1, 1)
         output = self.sk_ohe.transform(prediction_np).toarray()
         output_df = pd.DataFrame(data = output,
@@ -35,55 +75,73 @@ class OHE():
 
 class DataManager():
 
-    def __init__(self, df_train, df_val, problem_setup = 'full_group'):
+    def __init__(self, df_train, df_val, problem_setup = 'full_group', debug_mode = False):
+        self.start_time = time.time()
+        self.debug_mode = debug_mode
         self.df_train = df_train
         self.df_val = df_val
         self.problem_setup = problem_setup
-        self.model = RandomForestClassifier(n_estimators = 100)
+        self.model = RandomForestClassifier(n_estimators = 10, max_depth=12)
+
+        # print('data manager start, data manager size: {0}, {1}'.format(get_size(self), time.time() - self.start_time))
         self.outlier_model = IsolationForest()
         self.fit_data_pipeline()
+
+        del self.df_train
+        self.df_train = pd.DataFrame()
+
+        gc.collect()
         self.evaluate()
 
 
     def fit_data_pipeline(self):
         #location
+
         self.top_makes = self.df_train['Make'].value_counts()[:25].index.tolist()
+        print('self.top_makes, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
+
         self.df_train.loc[:,'Latitude'] = self.df_train.loc[:,'Latitude'].replace(99999.0, np.nan)
         self.df_train.loc[:,'Longitude'] = self.df_train.loc[:,'Longitude'].replace(99999.0, np.nan)
         self.df_train.loc[(self.df_train['Latitude'].notnull()) & (self.df_train['Longitude'].notnull()), 'lat_long_outlier_score'] = self.outlier_model.fit_predict(self.df_train.loc[(self.df_train['Latitude'].notnull()) & (self.df_train['Longitude'].notnull()), ['Latitude', 'Longitude']])
+        print('location trained, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
 
         self.df_train.loc[:, 'ticket_dt'] = pd.to_datetime(self.df_train.loc[:,'Issue Date'], errors='coerce')
         self.df_train.loc[:, 'plate_expiration_diff_dt'] = pd.to_datetime(self.df_train.loc[:,'Plate Expiry Date'].astype(int, errors = 'ignore'), format = '%Y%m', errors='coerce')
         self.df_train.loc[:, 'plate_expiration_diff_dt'] = self.df_train.loc[:,'plate_expiration_diff_dt'] - self.df_train.loc[:,'plate_expiration_diff_dt']
         self.df_train.loc[:, 'plate_expiration_diff_ts'] = self.df_train.loc[:,'plate_expiration_diff_dt'].values.astype(np.int64)
         # self.df_train.loc[:, 'ticket_ts'] = self.df_train.loc[:,'ticket_dt'].values.astype(np.int64)
+        # print('plate_expiration_diff calculated, data manager size: {0}'.format(get_size(self)))
 
-        self.rp_state_plate_ohe = OHE(self.df_train['RP State Plate'].copy(), col_name = 'rp_state_plate')
-        self.color_ohe = OHE(self.df_train['Color'].copy(), col_name = 'color')
-        self.agency_ohe = OHE(self.df_train['Agency'].copy(), col_name = 'agency')
-        self.route_ohe = OHE(self.df_train['Route'].copy(), col_name = 'route')
-        self.violation_code_ohe = OHE(self.df_train['Violation code'].copy(), col_name = 'violation_code')
-        self.violation_desc_ohe = OHE(self.df_train['Violation Description'].copy(), col_name = 'violation_desc')
-        self.body_style_ohe = OHE(self.df_train['Body Style'].copy(), col_name = 'body_style')
+        self.rp_state_plate_ohe = OHE(col_name = 'rp_state_plate')
+        self.color_ohe = OHE(col_name = 'color')
+        self.agency_ohe = OHE(col_name = 'agency')
+        self.route_ohe = OHE(col_name = 'route')
+        self.violation_code_ohe = OHE(col_name = 'violation_code')
+        self.violation_desc_ohe = OHE(col_name = 'violation_desc')
+        self.body_style_ohe = OHE(col_name = 'body_style')
 
         self.numeric_cols = ['Fine amount', 'lat_long_outlier_score', 'plate_expiration_diff_ts', 'Issue time']
+        print('all OHE calculated, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
 
-        train_dfs = [self.rp_state_plate_ohe.transform(self.df_train['RP State Plate'].copy()),
-                    self.color_ohe.transform(self.df_train['Color'].copy()),
-                    self.agency_ohe.transform(self.df_train['Agency'].copy()),
-                    self.route_ohe.transform(self.df_train['Route'].copy()),
-                    self.violation_code_ohe.transform(self.df_train['Violation code'].copy()),
-                    self.violation_desc_ohe.transform(self.df_train['Violation Description'].copy()),
-                    self.body_style_ohe.transform(self.df_train['Body Style'].copy())]
+        train_dfs = [self.rp_state_plate_ohe.fit_transform(self.df_train['RP State Plate']),
+                    self.color_ohe.fit_transform(self.df_train['Color']),
+                    self.agency_ohe.fit_transform(self.df_train['Agency']),
+                    self.route_ohe.fit_transform(self.df_train['Route']),
+                    self.violation_code_ohe.fit_transform(self.df_train['Violation code']),
+                    self.violation_desc_ohe.fit_transform(self.df_train['Violation Description']),
+                    self.body_style_ohe.fit_transform(self.df_train['Body Style'])]
 
         numeric_df = self.df_train[self.numeric_cols].reset_index(drop = True)
         train_dfs.append(numeric_df)
         train_data = pd.concat(train_dfs, axis = 1)
         train_labels = self.process_label(self.df_train)
 
-        train_data_copy = train_data.copy()
-        train_data_copy['Make'] = self.df_train['Make']
-        train_data_copy.to_csv('label_analysis.csv')
+        print('labels and data made, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
+
+        if self.debug_mode:
+            train_data_copy = train_data.copy()
+            train_data_copy['Make'] = self.df_train['Make']
+            train_data_copy.to_csv('label_analysis.csv')
 
         self.train_nan_fillers = train_data.median()
         train_data = train_data.fillna(self.train_nan_fillers)#TODO: fix actual nan
@@ -99,24 +157,30 @@ class DataManager():
         train_data = pd.concat([train_data_positive, train_data_negative])
         train_labels = train_data['target']
         train_data = train_data.drop('target', axis = 1)
+
+        print('undersampling_done, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
+
         self.model.fit(train_data, train_labels)
+        print('model fit, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
 
-        features_importances = dict()
-        for i, j in zip(train_data.columns, self.model.feature_importances_):
-            features_importances[i] = j
+        if self.debug_mode:
+            features_importances = dict()
+            for i, j in zip(train_data.columns, self.model.feature_importances_):
+                features_importances[i] = j
 
-        feature_impact = []
-        for i in train_data.columns:
-            slope, intercept, r_value, p_value, std_err = stats.linregress(train_data[i].values, train_labels)
-            feature_impact.append({'slope':slope,
-                                   'intercept':intercept,
-                                   'r_value':r_value,
-                                   'p_value':p_value,
-                                   'std_err':std_err,
-                                   'columns':i,
-                                   'model_feature_importance':features_importances[i]})
-        analysis_df = pd.DataFrame.from_dict(feature_impact)
-        analysis_df.to_csv('feature_analysis.csv', index = False)
+            feature_impact = []
+            for i in train_data.columns:
+                slope, intercept, r_value, p_value, std_err = stats.linregress(train_data[i].values, train_labels)
+                feature_impact.append({'slope':slope,
+                                       'intercept':intercept,
+                                       'r_value':r_value,
+                                       'p_value':p_value,
+                                       'std_err':std_err,
+                                       'columns':i,
+                                       'model_feature_importance':features_importances[i]})
+            analysis_df = pd.DataFrame.from_dict(feature_impact)
+            analysis_df.to_csv('feature_analysis.csv', index = False)
+
 
     def evaluate(self):
         val_data = self.process_features(self.df_val)
@@ -129,7 +193,7 @@ class DataManager():
         tn, fp, fn, tp = confusion_matrix(preds, val_label).ravel()
         precision = tp/(tp + fp)
         recall = tp/(tp + fn)
-        f1_score = 2* (precision*recall)/(precision + recall)
+        f1_score = 2 * (precision*recall)/(precision + recall)
         print(tn, fp, fn, tp )
         print('Positive metrics, precision: {precision}, recall: {recall}, f1_score: {f1_score}'.format(precision=precision, recall = recall, f1_score = f1_score))
 
@@ -147,13 +211,13 @@ class DataManager():
         df.loc[:, 'plate_expiration_diff_ts'] = df['plate_expiration_diff_dt'].values.astype(np.int64)
         # df.loc[:, 'ticket_ts'] = df['ticket_dt'].values.astype(np.int64)
 
-        dfs = [self.rp_state_plate_ohe.transform(df['RP State Plate'].copy()),
-                    self.color_ohe.transform(df['Color'].copy()),
-                    self.agency_ohe.transform(df['Agency'].copy()),
-                    self.route_ohe.transform(df['Route'].copy()),
-                    self.violation_code_ohe.transform(df['Violation code'].copy()),
-                    self.violation_desc_ohe.transform(df['Violation Description'].copy()),
-                    self.body_style_ohe.transform(df['Body Style'].copy())]
+        dfs = [self.rp_state_plate_ohe.transform(df['RP State Plate']),
+                    self.color_ohe.transform(df['Color']),
+                    self.agency_ohe.transform(df['Agency']),
+                    self.route_ohe.transform(df['Route']),
+                    self.violation_code_ohe.transform(df['Violation code']),
+                    self.violation_desc_ohe.transform(df['Violation Description']),
+                    self.body_style_ohe.transform(df['Body Style'])]
 
 
         numeric_df = df[self.numeric_cols].reset_index(drop = True)
@@ -173,14 +237,16 @@ class DataManager():
                             violation_description =  None,
                             body_styles =  None,
                             fine_amount =  None,
-                            issue_time = None):
+                            issue_time = None,
+                            rp_state_plate=None):
 
-        new_df = pd.DataFrame(data = [lat, long, issue_date, plate_expiry_date, color, agency,
+        new_df = pd.DataFrame(data = [[lat, long, issue_date, plate_expiry_date, color, agency,
                                       route, violation_code, violation_description, body_styles,
-                                      fine_amount, issue_time],
+                                      fine_amount, issue_time, rp_state_plate]],
                               columns = ['Latitude', 'Longitude', 'Issue Date', 'Plate Expiry Date', 'Color',
                                          'Agency', 'Route', 'Violation code', 'Violation Description',
-                                         'Body Style', 'Fine amount', 'Issue time'])
+                                         'Body Style', 'Fine amount', 'Issue time', 'RP State Plate'],
+                              index = [0])
         new_data = self.process_features(new_df)
         return self.model.predict_proba(new_data)
 
@@ -205,6 +271,8 @@ def query_model():
     body_styles = input_json.get('Body Style')
     fine_amount = input_json.get('Fine amount')
     issue_time = input_json.get('Issue time')
+    rp_state_plate = input_json.get('RP State Plate')
+
     prediction = dm.predict_record(lat = lat,
                             long =  long,
                             issue_date =  issue_date,
@@ -216,19 +284,28 @@ def query_model():
                             violation_description =  violation_description,
                             body_styles =  body_styles,
                             fine_amount =  fine_amount,
-                            issue_time = issue_time)
-
-    return jsonify({'result': prediction})
+                            issue_time = issue_time,
+                            rp_state_plate=rp_state_plate)
+    return jsonify({'prediction': prediction[0][1]})
 
 
 if __name__ == '__main__':
     replacement_value = 'dummy_replacement_value'
     path = '/home/td/Documents'
+    # url = 'https://s3-us-west-2.amazonaws.com/pcadsassessment/parking_citations.corrupted.csv'
     df = pd.read_csv('{path}/tickets.csv'.format(path=path), low_memory=False)
+    # df = pd.read_csv(url, low_memory=False)
+    df_unlabeled = df[df['Make'].isna()]
+    df_unlabeled.to_csv('unlabeled_data.csv', index = False)
     df_labeled = df.dropna(subset = ['Make'])
     df_labeled = df_labeled.sample(frac = 1, random_state = 1)
+    del df, df_unlabeled
+    gc.collect()
     df_analysis = df_labeled[:int(df_labeled.shape[0] * .9)]
     df_holdout = df_labeled[int(df_labeled.shape[0] * .9):]
-    print(df_labeled.shape, df_analysis.shape, df_holdout.shape)
+    del df_labeled
+    gc.collect()
+
+    # print(df_labeled.shape, df_analysis.shape, df_holdout.shape)
     dm = DataManager(df_analysis, df_holdout)
-    app.run(host= '0.0.0.0',debug=True)
+    app.run(host= '127.0.0.1', port = 9999, debug=False)
