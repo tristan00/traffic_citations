@@ -42,15 +42,15 @@ def pad_int(num, l = 4):
 class OHE(OneHotEncoder):
     def __init__(self, n_values=None, categorical_features=None,
                  categories=None, sparse=True, dtype=np.float64,
-                 handle_unknown='error', min_perc = .01, col_name = '', nan_treatment = 'mode'):
+                 handle_unknown='error', min_perc = .01, col_name = ''):
         super().__init__(n_values=n_values, categorical_features=categorical_features,
                  categories=categories, sparse=sparse, dtype=dtype,
                  handle_unknown=handle_unknown)
-        self.nan_treatment = nan_treatment
         self.min_perc = min_perc
         self.col_name = col_name
         self.valid_values = []
         self.col_names = []
+        self.nan_replacement_value = None
 
     def fit(self, X, y=None):
         input_series = self.process_input(X)
@@ -63,9 +63,9 @@ class OHE(OneHotEncoder):
         return self.process_output(output)
 
     def process_input(self, s):
-        print('process_input', self.col_name, type(s))
-        if self.nan_treatment == 'mode':
-            s = s.fillna(s.mode())
+        if not self.nan_replacement_value:
+            self.nan_replacement_value = s.mode()[0]
+        s = s.fillna(s.mode())
         s = s.astype(str)
 
         if not self.valid_values:
@@ -78,7 +78,6 @@ class OHE(OneHotEncoder):
         return s.values.reshape(-1, 1)
 
     def process_output(self, output):
-        print('process_output', self.col_name, type(output))
         output_df = pd.DataFrame(data = output.toarray(),
                                 columns = self.col_names)
         return output_df
@@ -172,10 +171,10 @@ class DataManager():
         train_labels = self.process_label(self.df_train)
 
         print('labels and data created, data manager size: {0}, run time: {1}'.format(get_size(self), time.time() - self.start_time))
-
-        train_data_copy = train_data.copy()
-        train_data_copy['Make'] = self.df_train['Make']
-        train_data_copy.to_csv('label_analysis.csv')
+        #
+        # train_data_copy = train_data.copy()
+        # train_data_copy['Make'] = self.df_train['Make']
+        # train_data_copy.to_csv('label_analysis.csv')
 
         self.train_nan_fill_choice = train_data.median()
         # self.train_nan_fill_choice['Issue time'] = train_data['Issue time'].mode()
@@ -203,18 +202,18 @@ class DataManager():
         for i, j in zip(train_data.columns, self.model.feature_importances_):
             features_importances[i] = j
 
-        feature_impact = []
-        for i in train_data.columns:
-            slope, intercept, r_value, p_value, std_err = stats.linregress(train_data[i].values, train_labels)
-            feature_impact.append({'slope':slope,
-                                   'intercept':intercept,
-                                   'r_value':r_value,
-                                   'p_value':p_value,
-                                   'std_err':std_err,
-                                   'columns':i,
-                                   'model_feature_importance':features_importances[i]})
-        analysis_df = pd.DataFrame.from_dict(feature_impact)
-        analysis_df.to_csv('feature_analysis.csv', index = False)
+        # feature_impact = []
+        # for i in train_data.columns:
+        #     slope, intercept, r_value, p_value, std_err = stats.linregress(train_data[i].values, train_labels)
+        #     feature_impact.append({'slope':slope,
+        #                            'intercept':intercept,
+        #                            'r_value':r_value,
+        #                            'p_value':p_value,
+        #                            'std_err':std_err,
+        #                            'columns':i,
+        #                            'model_feature_importance':features_importances[i]})
+        # analysis_df = pd.DataFrame.from_dict(feature_impact)
+        # analysis_df.to_csv('feature_analysis.csv', index = False)
 
 
     def evaluate(self):
@@ -350,4 +349,4 @@ if __name__ == '__main__':
 
     # print(df_labeled.shape, df_analysis.shape, df_holdout.shape)
     dm = DataManager(df_analysis, df_holdout)
-    app.run(host= '127.0.0.1', port = 9995, debug=False)
+    app.run(host= '127.0.0.1', port = 9992, debug=False)
