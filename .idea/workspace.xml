@@ -1,16 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="3dbf772b-7596-4189-8b26-973ce14704e5" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/run.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/server_tester.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Assessment1.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/Assessment1.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Assessment2.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/Assessment2.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Untitled.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/Untitled.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/server.py" afterDir="false" />
-    </list>
+    <list default="true" id="3dbf772b-7596-4189-8b26-973ce14704e5" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,8 +18,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/server.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="455">
-              <caret line="233" column="4" selection-start-line="233" selection-start-column="4" selection-end-line="233" selection-end-column="4" />
+            <state relative-caret-position="630">
+              <caret line="228" column="62" lean-forward="true" selection-start-line="228" selection-start-column="62" selection-end-line="228" selection-end-column="62" />
               <folding>
                 <element signature="e#0#19#0" expanded="true" />
               </folding>
@@ -263,8 +254,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/server.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="455">
-          <caret line="233" column="4" selection-start-line="233" selection-start-column="4" selection-end-line="233" selection-end-column="4" />
+        <state relative-caret-position="630">
+          <caret line="228" column="62" lean-forward="true" selection-start-line="228" selection-start-column="62" selection-end-line="228" selection-end-column="62" />
           <folding>
             <element signature="e#0#19#0" expanded="true" />
           </folding>
