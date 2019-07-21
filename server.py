@@ -120,9 +120,9 @@ class DataManager():
         self.df_train['ticket_dow'] = self.df_train['ticket_dt'].dt.dayofweek
         self.df_train['ticket_hour_of_day'] = self.df_train['Issue time'].apply(lambda x: pad_int(x)).astype(str).str[:2]
 
-        self.df_train.loc[:, 'plate_expiration_diff_dt'] = pd.to_datetime(self.df_train.loc[:,'Plate Expiry Date'].astype(int, errors = 'ignore'), format = '%Y%m', errors='coerce')
-        self.df_train.loc[:, 'plate_expiration_diff_dt'] = self.df_train.loc[:,'plate_expiration_diff_dt'] - self.df_train.loc[:,'plate_expiration_diff_dt']
-        self.df_train.loc[:, 'plate_expiration_diff_ts'] = self.df_train.loc[:,'plate_expiration_diff_dt'].values.astype(np.int64)
+        self.df_train['plate_expiration_dt'] = pd.to_datetime(self.df_train['Plate Expiry Date'].astype(int, errors = 'ignore'), format = '%Y%m', errors='coerce')
+        self.df_train['plate_expiration_diff_dt'] = self.df_train['plate_expiration_dt'] - self.df_train['ticket_dt']
+        self.df_train['plate_expiration_diff_ts'] = self.df_train['plate_expiration_diff_dt'].values.astype(np.int64)
         # self.df_train.loc[:, 'ticket_ts'] = self.df_train.loc[:,'ticket_dt'].values.astype(np.int64)
         # print('plate_expiration_diff calculated, data manager size: {0}'.format(get_size(self)))
 
