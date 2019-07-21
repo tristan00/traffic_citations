@@ -127,17 +127,17 @@ class DataManager():
         # self.df_train.loc[:, 'ticket_ts'] = self.df_train.loc[:,'ticket_dt'].values.astype(np.int64)
         # print('plate_expiration_diff calculated, data manager size: {0}'.format(get_size(self)))
 
-        self.rp_state_plate_ohe = OHE2(col_name = 'rp_state_plate')
-        self.color_ohe = OHE2(col_name = 'color')
-        self.agency_ohe = OHE2(col_name = 'agency')
-        self.route_ohe = OHE2(col_name = 'route')
-        self.violation_code_ohe = OHE2(col_name = 'violation_code')
-        self.violation_desc_ohe = OHE2(col_name = 'violation_desc')
-        self.body_style_ohe = OHE2(col_name = 'body_style')
-        self.ticket_year_ohe = OHE2(col_name = 'ticket_year')
-        self.ticket_month_ohe = OHE2(col_name = 'ticket_month')
-        self.ticket_dow_ohe = OHE2(col_name = 'ticket_dow')
-        self.ticket_hour_of_day_ohe = OHE2(col_name = 'ticket_hour_of_day')
+        self.rp_state_plate_ohe = OHE(col_name = 'rp_state_plate')
+        self.color_ohe = OHE(col_name = 'color')
+        self.agency_ohe = OHE(col_name = 'agency')
+        self.route_ohe = OHE(col_name = 'route')
+        self.violation_code_ohe = OHE(col_name = 'violation_code')
+        self.violation_desc_ohe = OHE(col_name = 'violation_desc')
+        self.body_style_ohe = OHE(col_name = 'body_style')
+        self.ticket_year_ohe = OHE(col_name = 'ticket_year')
+        self.ticket_month_ohe = OHE(col_name = 'ticket_month')
+        self.ticket_dow_ohe = OHE(col_name = 'ticket_dow')
+        self.ticket_hour_of_day_ohe = OHE(col_name = 'ticket_hour_of_day')
 
         # self.numeric_cols = ['Fine amount', 'lat_long_outlier_score', 'plate_expiration_diff_ts']
         self.numeric_cols = ['Fine amount', 'plate_expiration_diff_ts']
@@ -334,9 +334,9 @@ def query_model():
 if __name__ == '__main__':
     replacement_value = 'dummy_replacement_value'
     path = '/home/td/Documents'
-    # url = 'https://s3-us-west-2.amazonaws.com/pcadsassessment/parking_citations.corrupted.csv'
-    df = pd.read_csv('{path}/tickets.csv'.format(path=path), low_memory=False, nrows = 100000)
-    # df = pd.read_csv(url, low_memory=False)
+    url = 'https://s3-us-west-2.amazonaws.com/pcadsassessment/parking_citations.corrupted.csv'
+    # df = pd.read_csv('{path}/tickets.csv'.format(path=path), low_memory=False, nrows = 100000)
+    df = pd.read_csv(url, low_memory=False)
     df_unlabeled = df[df['Make'].isna()]
     df_unlabeled.to_csv('unlabeled_data.csv', index = False)
     df_labeled = df.dropna(subset = ['Make'])
@@ -350,4 +350,4 @@ if __name__ == '__main__':
 
     # print(df_labeled.shape, df_analysis.shape, df_holdout.shape)
     dm = DataManager(df_analysis, df_holdout)
-    app.run(host= '127.0.0.1', port = 9996, debug=False)
+    app.run(host= '127.0.0.1', port = 9995, debug=False)
