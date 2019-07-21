@@ -221,10 +221,8 @@ class DataManager():
         val_label = self.process_label(self.df_val)
         preds = self.model.predict(val_data)
 
-        print(val_data.shape, val_label.shape, preds.shape)
-        print(classification_report(preds, val_label))
-        print(confusion_matrix(preds, val_label))
-        tn, fp, fn, tp = confusion_matrix(preds, val_label).ravel()
+        print(confusion_matrix(val_label, preds))
+        tn, fp, fn, tp = confusion_matrix(val_label, preds).ravel()
         precision = tp/(tp + fp)
         recall = tp/(tp + fn)
         f1_score = 2 * (precision*recall)/(precision + recall)
@@ -349,4 +347,4 @@ if __name__ == '__main__':
 
     # print(df_labeled.shape, df_analysis.shape, df_holdout.shape)
     dm = DataManager(df_analysis, df_holdout)
-    app.run(host= '127.0.0.1', port = 9992, debug=False)
+    app.run(host= '127.0.0.1', port = 9990, debug=False)
